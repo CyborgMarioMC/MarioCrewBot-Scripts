@@ -1,0 +1,374 @@
+//================================================================
+//Aliases
+//================================================================
+alias -l autohost {
+
+  SET %ah.run True
+  IF (($livecheck(%current.host) == true) || ($getcurrenthost == true)) { VAR %still.live = True }
+
+  IF (%still.live) {
+    IF (%ah.tier == 1) { UNSET %ah.run | halt }
+    IF (%ah.tier == 2) && ($calc($ctime - %ah.uptime) < %t2.wait) { UNSET %ah.run | halt }
+    IF (%ah.tier == 3) && ($calc($ctime - %ah.uptime) < %t3.wait) { UNSET %ah.run | halt }
+  }
+
+  VAR %ahcount = 1
+  WHILE ($wildtok($read(autohost.txt, n, 1), *, %ahcount, 32) != $null) {
+    VAR %ahn = $wildtok($read(autohost.txt, n, 1), *, %ahcount, 32)
+    IF ($livecheck(%ahn) == true) && ($rehostcheck(%ahn) != true) && (%livechannel != %current.host) {
+      SET %ah.tier 1
+      autohost2
+      halt
+    }
+    INC %ahcount
+  }
+
+  IF (%still.live) && (%ah.tier == 2) { UNSET %ah.run | halt }
+  VAR %ahcount = 1
+  WHILE ($wildtok($read(autohost.txt, n, 2), *, %ahcount, 32) != $null) {
+    VAR %ahn = $wildtok($read(autohost.txt, n, 2), *, %ahcount, 32)
+    IF ($livecheck(%ahn) == true) && ($rehostcheck(%ahn) != true) && (%livechannel != %current.host) {
+      SET %ah.tier 2
+      autohost2
+      halt
+    }
+    INC %ahcount
+  }
+
+  IF (%still.live) && ((%ah.tier == 2) || (%ah.tier == 3)) { UNSET %ah.run | halt }
+  VAR %ahcount = 1
+  WHILE ($wildtok($read(autohost.txt, n, 3), *, %ahcount, 32) != $null) {
+    VAR %ahn = $wildtok($read(autohost.txt, n, 3), *, %ahcount, 32)
+    IF ($livecheck(%ahn) == true) && ($rehostcheck(%ahn) != true) && (%livechannel != %current.host) {
+      SET %ah.tier 3
+      autohost2
+      halt
+    }
+    INC %ahcount
+  }
+  UNSET %ah.run
+}
+
+alias -l autohost2 {
+
+  MSG %mychan .host %livechannel
+  SET %ah.uptime $ctime
+  INC %no.rehost
+  WRITE -l $+ %no.rehost norehost.txt %livechannel $ctime
+  IF (%no.rehost == 20) %no.rehost = 0
+  UNSET %livechannel
+  UNSET %ah.run
+}
+
+alias -l rehostcheck {
+
+  VAR %rhcount = 1
+  IF ($exists(norehost.txt)) {
+    WHILE ($read(norehost.txt, %rhcount) != $null) {
+      VAR %rhnick = $wildtok($read(norehost.txt, %rhcount), *, 1, 32)
+      VAR %rhtime = $wildtok($read(norehost.txt, %rhcount), *, 2, 32)
+      IF ($calc($ctime - %rhtime) < %rh.wait) && (%rhnick == $1) { return true }
+      INC %rhcount
+    }
+  }
+}
+
+alias -l livecheck {
+
+  IF (%tu == 1000) %tu = 0
+  INC %tu
+  JSONOpen -ud live $+ %tu https://api.twitch.tv/kraken/streams/ $+ $1 $+ ?nocache= $+ $ticks
+  IF ( $json(live $+ %tu $+ ,stream) != $null ) {
+    SET %livechannel $1
+    return true
+  }
+  JSONClose live $+ %tu
+}
+
+alias -l getcurrenthost {
+
+  JSONOpen -ud currenthost http://tmi.twitch.tv/hosts?include_logins=1&host= $+ %twitch_id
+  IF ( $json(currenthost, hosts, 0, target_login) != $null ) {
+    SET %current.host $json(currenthost, hosts, 0, target_login)
+    return true
+  }
+  JSONClose currenthost
+}
+
+alias -l twitch_name {
+
+  IF (%tn == 1000) %tn = 0
+  INC %tn
+  JSONOpen -ud twitch_name $+ %tn https://api.twitch.tv/kraken/channels/ $+ $1
+  return $json(twitch_name $+ %tn $+ , display_name)
+  JSONClose twitch_name $+ %tn
+}
+
+alias -l addUser {
+  writeini -n %rosterFile $calc(%rosterID + 1) name $1
+  writeini -n %rosterFile $calc(%rosterID + 1) coins
+  inc %rosterID
+}
+
+alias -l checkMsgAt {
+  return $replace($1, @, $)
+}
+
+alias -l checkMsgDollar {
+  return $replace($1, $, @)
+}
+
+alias -l comAlreadyExists {
+  var %i = 1
+  while (%i <= %commandID) {
+    if ($readini(%commandFile, %i, name) == $1) {
+      return $true
+    }
+    inc %i
+  }
+  return $false
+}
+
+alias -l draw {
+  MSG %chan %rps.1 and %rps.2 both chose %rps.1t $+ . Game is tied! 
+  UNSET %rps.1t
+  UNSET %rps.2t
+}
+
+alias -l getTopID {
+  var %rosterID = $ini(%rosterFile, 0)
+  var %topID = $ini(%topFile, 0)
+  var %highestCoins = 0
+  var %highestID = -1
+
+  var %i = 1
+  while (%i <= %rosterID) {
+    var %coins = $readini(%rosterFile, %i, coins)
+    if (%coins >= %highestPoints) {
+      var %topNameFound = $false
+      var %j = 1
+      while (%j <= %topID) {
+        var %name = $readini(%rosterFile, %i, name)
+        var %topName = $readini(%topFile, %j, name)
+        if (%name == %topName) {
+          %topNameFound = $true
+          break
+        }
+        inc %j
+      }
+      if (%topNameFound == $false) {
+        %highestCoins = %coins
+        %highestID = %i
+      }
+    }
+    inc %i
+  }
+
+  var %highestName = $readini(%rosterFile, %highestID, name)
+  writeini -n %topFile $calc(%topID + 1) name %highestName
+  writeini -n %topFile $calc(%topID + 1) coins %highestCoins
+}
+
+alias -l findID {
+  var %searchName = $1
+  var %i = 1
+
+  while (%i <= %rosterID) {
+    var %name = $readini(%rosterFile, %i, name)
+    if (%name == %searchName) {
+      return %i
+    }
+    inc %i
+  }
+
+  return 0
+}
+
+alias -l faceoff {
+  IF (%rps.1t == rock) && (%rps.2t == rock) /draw {
+    IF (%rps.1t == scissors) && (%rps.2t == scissors) /draw {
+      IF (%rps.1t == paper) && (%rps.2t == paper) /draw {
+        IF (%rps.1t == paper) && (%rps.2t == rock) /win1 {
+          IF (%rps.1t == scissors) && (%rps.2t == paper) /win1 {
+            IF (%rps.1t == rock) && (%rps.2t == scissors) /win1 {
+              IF (%rps.1t == rock) && (%rps.2t == paper) /win2 {
+                IF (%rps.1t == paper) && (%rps.2t == scissors) /win2 { 
+                  IF (%rps.1t == scissors) && (%rps.2t == rock) /win2  {            
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+alias -l msgAlreadyExists {
+  var %i = 1
+  while (%i <= %commandID) {
+    if ($readini(%commandFile, %i, message) == $1) {
+      var %duplicateCommand = $readini(%commandFile, %i, name)
+      return %duplicateCommand
+    }
+    inc %i
+  }
+  return $false
+}
+
+alias -l processCoinraid {
+  if ($ini(%coinraidFile, 0) == 0) {
+    %coinraidIsOn = $false
+    msg $1 /me No one joined the coinraid! The piggy banks are safe for now.
+    return
+  }
+  else {
+    %coinraidIsOn = $false
+    msg $1 /me The coinraid is now starting! Good luck crew!
+
+    var %people = $ini(%coinraidFile, 0)
+    var %chances = 0
+    var %winningsRatio = 1
+    if (%people >= 31) {
+      %chances = 66
+      %winningsRatio = 1
+    }
+    elseif (%people < 31 && %people >= 20) {
+      %chances = $calc(35 + %people)
+      %winningsRatio = 1
+    }
+    else {
+      %chances = $calc(35 + %people)
+      if (%people < 20 && %people >= 10) {
+        %winningsRatio = 2
+      }
+      elseif (%people < 10) {
+        %winningsRatio = 3
+      }
+    }
+    msg $1 /me the current chances of surviving: $+(%chances, %)
+    var %winnersList = The survivors of the coinraid are:
+    var %winnersListEmpty = $true
+    var %i = 1
+    msg $1 /me number of people in the coinraid: %people
+    while (%i <= %people) {
+      var %name = $readini(%coinraidFile, %i, name)
+      var %bet = $readini(%coinraidFile, %i, bet)
+      var %pointsID = $findID(%rosterFile, $ini(%rosterFile, 0), %name)
+
+      var %currentCoins = $readini(%rosterFile, %pointsID, coins)
+      var %randomNum = $rand(1, 100)
+      if (%randomNum <= %chances) {
+        writeini -n %rosterFile %pointsID coins $calc(%currentCoins+ %winningsRatio * %bet)
+        %winnersList = $+(%winnersList, $chr(32), %name)
+        %winnersListEmpty = $false
+      }
+      else {
+        writeini -n %rosterFile %pointsID coins $calc(%currentCoins - %bet)
+      }
+      inc %i
+    }
+    if (%winnersListEmpty == $true) {
+      msg $1 /me No one survived the coinraid, everyone died!
+    }
+    else {
+      msg $1 /me %winnersList
+    }
+    %coinraidID = 0
+  }
+}
+
+alias -l switchCoinraidOn {
+  %coinraidIsOn = $true
+  write -c %coinraidFile
+  msg $1 /me Come one, come all! The piggy banks are open for the taking! Use !coinraid [coins] to bet. 60 seconds remaining to join.
+  timerCoinraidDuration 1 60 processCoinraid $1
+}
+
+alias -l update {
+  var %ID = $1
+  var %multiplier = $calc($ini(%rosterFile, 1, 0) + 2)
+  var %startingLine = $calc(%ID * (%multiplier) - (%multiplier - 1))
+  var %endLine = $calc((%rosterID - 1) * (%multiplier) - (%multiplier - 1))
+
+  while (%startingLine <= %endLine) {
+    write $+(-l, %startingLine) %rosterFile $+([, %ID, ])
+    %ID = $calc(%ID + 1)
+    %startingLine = $calc(%startingLine + %multiplier)
+  }
+}
+
+alias -l update {
+  var %file = $1
+  var %ID = $3
+
+  write -c %temp
+  var %startingID = $calc($2 + 1)
+  while (%startingID <= %ID) {
+    var %temp-name = $readini(%file, %startingID, name)
+    writeini -n %temp $calc(%startingID - 1) name %temp-name
+    var %temp-msg = $readini(%file, %startingID, message)
+    writeini -n %temp $calc(%startingID - 1) message %temp-msg
+
+    inc %startingID
+  } 
+  %startingID = $calc($2 + 1)
+  while (%startingID <= %ID) {
+    remini %file %startingID
+    inc %startingID
+  } 
+  %startingID = $2
+  while (%startingID < %ID) {
+    var %temp-name = $readini(%temp, %startingID, name)
+    writeini -n %file %startingID name %temp-name
+    var %temp-msg = $readini(%temp, %startingID, message)
+    writeini -n %file %startingID message %temp-msg
+    writeini -n %file %startingID permission *
+    inc %startingID
+  }
+}
+
+alias -l addTimerCoins {
+  var %ID = $findID(%rosterFile, %rosterID, $1)
+  if (%ID == 0) {
+    $addUser($1)
+    %ID = $findID(%rosterFile, %rosterID, $1)
+  }
+  var %currentCoins = $readini(%rosterFile, %ID, coins)
+  writeini -n %rosterFile %ID coins $calc(%currentCoins + 1)
+}
+
+alias err { ms $iif($chr(35) isin $1,$1,#) 3Â¡6ERROR3! 1 $+ $iif($chr(35) isin $1,$2-,$1-) | halt } 
+alias ms { 
+  var %a $iif($chr(35) isin $1,$2-,$1-)
+  msg $iif($chr(35) isin $1,$1,#) %a
+}
+alias re { return $readini(BD/ $+ $1 $+ .ini,$2,$3,$4) }
+alias i { return $ini(BD/ $+ $1 $+ .ini,$2,$3) }
+alias ai { if !$exist($mircdirbd) { mkdir bd  } |  writeini bd/ $+ $1 $+ .ini $2- } 
+alias di { remini bd/ $+ $1 $+ .ini $2- }
+
+alias removepermit {
+  if (!$1-) { return }
+  var %rn = $read(reglist.txt,nw,$2)
+  var %rnum = $readn
+  if (%rn) { write -dl $+ %rnum reglist.txt }
+}
+
+alias isurl {
+  var %url = /(?:ftp:\/\/|https?:\/\/|www2?\.)[^<>\.\s]+(?:\.[^<>\.\s]+)+(?:\/[^<>\.\s]+)*|irc:\/\/[^<>\.\s]+(?:\.[^/<>\.\s]+)+(?:\/[^/<>\.\s]*)?\/?(?![^\s\x2c\.])|aim:goim\?screenname=[^\s&]+(?:&message=[^\s&=]+)?/
+  return $regex($1,%url)
+}
+
+alias win1 {
+  MSG %chan %rps.1t beats %rps.2t $+ ! %rps.1 is the winner!
+  UNSET %rps.1t
+  UNSET %rps.2t
+}
+
+alias win2 {
+  MSG %chan %rps.2t beats %rps.1t $+ ! %rps.2 is the winner!
+  UNSET %rps.1t
+  UNSET %rps.2t
+}
