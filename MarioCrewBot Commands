@@ -1,0 +1,461 @@
+//------------------------------------------------------------------------------------------------
+//Commands
+//------------------------------------------------------------------------------------------------
+
+on 3:text:!addCom*:#: {
+  var %commandName = $2
+  var %message = $replace($3-, $, @)
+  if (%message == $null) {
+    msg $chan /me You must have a command message.
+    return
+  }
+
+  if ($comAlreadyExists(%commandName) == $false && $left(%commandName, 1) == !) {
+    var %msgViability = $msgAlreadyExists(%message)
+    if (%msgViability == $false) {
+      writeini -n %commandFile $calc(%commandID + 1) name %commandName
+      writeini -n %commandFile $calc(%commandID + 1) message %message
+      writeini -n %commandFile $calc(%commandID + 1) permission *
+      inc %commandID
+      msg $chan /me The command %commandName has been added.
+    }
+    else {
+      msg $chan /me There is already a command ( $+ %msgViability $+ ) with the same message as %commandName $+ .
+    }
+  }
+  elseif ($comAlreadyExists(%commandName) == $false && $left(%commandName, 1) != !) {
+    msg $chan /me To add a command, it must start with !
+  }
+  else {
+    msg $chan /me The command %commandName already exists. Type !editCom [name] [new message] to edit it.
+  }
+}
+
+on 3:text:!delCom*:#: {
+  var %command = $2
+  var %i = 1
+
+  while (%i <= %commandID) {
+    if ($readini(%commandFile, %i, name) == %command) {
+      remini %commandFile %i
+      $update(%commandFile, %i, %commandID)
+      dec %commandID
+      msg $chan /me The command %command was deleted
+      return
+    }
+    inc %i
+  }
+  msg $chan /me The command %command was not found.
+}
+
+on 3:text:!editCom*:#: {
+  var %command = $2
+  var %newMsg = $3-
+  var %i = 1
+
+  while (%i <= %commandID) {
+    if ($readini(%commandFile, %i, name) == %command) {
+      writeini -n %commandFile %i message %newMsg
+      msg $chan /me The command %command was successfully edited
+      return
+    }
+    inc %i
+  }
+  msg $chan /me The command %command was not found in the list
+}
+
+on 5:text:!addUser*:#: {
+  var %name = $2
+  var %coins = $3
+
+  if ($findID(%name) != 0) {
+    msg $chan /me %name is already in the Piggy bank.
+  }
+  else {
+    writeini -n %rosterFile $calc(%rosterID + 1) name %name
+    writeini -n %rosterFile $calc(%rosterID + 1) coins %coins
+
+    msg $chan /me %name was added to the Piggy bank for %coins coins
+    inc %rosterID
+  }
+}
+
+on *:text:!coins:#: {
+  var %ID = $findID($nick)
+  if (%ID == 0) {
+    msg $chan $nick is not in the piggy bank!
+    else {
+      var %coins = $readini(%rosterFile, $findID($nick), coins)
+      msg $chan $nick has %coins coins.
+    }
+  }
+}
+
+on 5:text:!addcoins*:#: {
+  var %name = $2
+  var %coins = $3
+
+  if ($0 != 3) {
+    msg $chan /me Format: !addUser [name] [coins]
+  }
+  elseif (%coins !isnum) {
+    msg $chan /me %coins must be a number!
+  }
+  elseif ($findID(%name) == 0) {
+    $addUser(%name, %coins)
+  }
+  else {
+    var %currentCoins = $readini(%rosterFile, $findID(%name), Coins)
+    var %newCoins = $calc(%currentCoins + %coins)
+
+    writeini -n %rosterFile $findID(%name) coins %newCoins
+
+    msg $chan /me %coins coins were added to %name
+    inc %rosterID
+  }
+}
+
+on 5:text:!delete*:#: {
+  var %name = $2
+  var %ID = $findID(%name)
+
+  if (%ID == 0) {
+    msg $chan /me %name was not found in the Piggy bank.
+  }
+  elseif (%name == mariomari007) {
+    msg $chan /me %name cannot be deleted!
+  }
+  else {
+    remini %rosterFile %ID
+    $update(%ID)
+    dec %rosterID
+    msg $chan /me %name was successfully deleted.
+  }
+}
+
+on 5:text:!addviews:#: {
+  var %i = 1
+  while (%i <= %rosterID) {
+    writeini -n %rosterFile %i views 0
+    inc %i
+  }
+  msg $chan /me The element "views" were added to every section in roster file.
+}
+
+on *:text:!commands:#: {
+  var %print = $+(Commands:, $chr(32))
+  var %i = 1
+  while (%i <= %commandID) {
+    var %commandName = $readini(%commandFile, %i, name)
+    %print = $+(%print, $chr(32), %commandName)
+    inc %i
+  }
+  msg $chan %print
+}
+
+on *:text:!coinraid*:#: {
+  if (%coinraidIsOn == $false) {
+    msg $chan /me The piggy banks are currently closed!
+  }
+  else {
+    var %pointsID = $findID(%rosterFile, $ini(%rosterFile, 0), $nick)
+    var %currentCoins = $readini(%rosterFile, %pointsID, coins)
+    if (%pointsID == 0) {
+      msg $chan /me $nick you have no coins.
+    }
+    elseif ($0 == 1 || $2 !isnum) {
+      msg $chan /me $nick you must enter a bet from your current coins.
+    }
+    elseif ($2 > %currentCoins || $2 == 0) {
+      msg $chan /me $nick you must enter a bet you can afford and is not 0 [Coins available: $+(%currentcoins, ]).
+    }
+    else {
+      var %ID = $findID(%coinraidFile, $ini(%coinraidFile, 0), $nick)
+      if (%ID != 0) {
+        var %bet = $readini(%coinraidFile, %ID, bet)
+        msg $chan /me $nick you have already made a bet of %bet
+        return
+      }
+      writeini -n %coinraidFile $calc(%coinraidID + 1) name $nick
+      writeini -n %coinraidFile $calc(%coinraidID + 1) bet $2
+      inc %coinraidID
+    }
+  }
+}
+
+on 3:text:!top*:#: {
+  if ($2 < 1 || $0 < 2) {
+    msg $chan /me $nick to use the !top command you must specify a positive number.
+  }
+  elseif ($2 > 10) {
+    msg $chan /me $nick you cannot specify a number greater than 10.
+  }
+  else {
+    var %ID = $ini(%rosterFile, 0)
+    if ($2 > %ID) {
+      msg $chan /me $nick there are only %ID people in the piggy bank.
+    }
+    else {
+      write -c %topFile
+
+      var %topList = Top $2 coins:
+      var %i = 1
+      while (%i <= $2) {
+        $getTopID()
+        var %name = $readini(%topFile, %i, name)
+        var %coins = $readini(%topFile, %i, coins)
+        if (%i != $2) {
+          %topList = $+(%topList, $chr(32), %name, $chr(32), %coins, $chr(44))
+        }
+        else {
+          %topList = $+(%topList, $chr(32), %name, $chr(32), %coins)
+        }
+        inc %i
+      }
+
+      msg $chan /me %topList
+    }
+  }
+}
+
+on 3:text:!raid*:#: { 
+  if (!$2) msg $chan Must specify a streamer to raid
+  elseif ($2) && (!$3) msg $chan The stream is over everyone. Let's raid someone! Go to http://www.twitch.tv/ $+ $2 and say in the chat "/me We are the MarioCrew and we are coming in strong! #MarioCrewRaid" only type it once so you dont get times out for spam.
+  else msg $chan $nick Sorry, You're not allowed to use this command!
+}
+
+on 5:text:!host*:#: {
+  if ($nick == mariomari007) {
+    if (!$2) msg $chan Must specify a streamer to Host
+    elseif ($2) && (!$3) msg $chan /host $2 $+  
+  }
+  else msg $chan $nick This is a Mod Only Command Sry !
+}
+
+on 5:text:!reconnect:#: {
+  if ($nick == mariomari007) {
+    msg $chan is reconnecting..
+    .quit Restarting.. Be right back!
+    .server 
+  }
+}
+
+on 5:text:!cap:#: {
+  CAP REQ :twitch.tv/membership 
+  CAP REQ :twitch.tv/commands 
+  CAP REQ :twitch.tv/tags  
+  msg $chan /me cap requested!
+}
+
+if ($nick == %rps.1) && (%rps.2 != $null) {
+  on *:TEXT:!quit:#:{
+    msg $chan [Rock Paper Scissors] $nick has left the current game, %rps.2 may still be challenged by a new opponent.
+    unset %rps.1
+  }
+  elseif ($nick == %rps.2) && (%rps.1 != $null) {
+    msg $chan [Rock Paper Scissors] $nick has left the current game, %rps.1 may still be challenged by a new opponent.
+    unset %rps.2
+  }
+  else {
+    msg $chan [Rock Paper Scissors] There are no players for rock paper scissors, please type !rps to look for an opponent
+    UNSET %rps.1
+    UNSET %rps.2
+    UNSET %chan
+  }
+}
+
+on *:TEXT:!rps:#:{
+  if (%rps.1 == $null) && (%rps.2 == $null) {
+    msg $chan [Rock Paper Scissors] New game started by $nick $+ , To challenge $nick type !join
+    set %rps.1 $nick
+    set %chan $chan
+  }
+  ELSE {
+    MSG %chan [Rock Paper Scissors] Game already in progress. Type !join to play against %rps.1
+  }
+}
+
+on *:TEXT:!join:#:{
+  if ($nick != %rps.1) && (%rps.1 != $null) { 
+    msg $chan [Rock Paper Scissors] $nick has accepted %rps.1 $+ 's challenge. %rps.1 Please type !start to begin 
+    set %rps.2 $nick
+  }
+  ELSEIF (%rps.1 == $null) && (%rps.2 == $null)  {
+    MSG [Rock Paper Scissors] $chan No game in progress. Please use !rps to find an opponent
+  }
+  ELSE {
+    MSG $chan [Rock Paper Scissors] You're already player #1 $nick $+ .
+  }
+}
+
+on *:TEXT:!start:#:{
+  if ($nick == %rps.1) && (%rps.2 != $null) {
+    query %rps.1 Welcome to IRC Rock Paper Scissors. To play, please enter your choice here (Rock, Paper or Scissors)and wait for player 2 to respond
+    query %rps.2 Welcome to IRC Rock Paper Scissors. To play, please enter your choice here when prompted. Waiting for %rps.1 to decide his choice.
+    msg $chan [Rock Paper Scissors] Rock Paper Scissors Game started. Contestents: %rps.1 and %rps.2 please look at the query you just recieved
+  }
+  ELSEIF ($nick != %rps.1) && ($nick == %rps.2) {
+    MSG $chan [Rock Paper Scissors] Only %rps.1 can start the game.
+  }
+  ELSEIF (%rps.1 == $null) && (%rps.2 == $null)  {
+    MSG $chan [Rock Paper Scissors] No game in progress. Please use !rps to find an opponent 
+  }
+  Else {
+    MSG $chan [Rock Paper Scissors] You need 2 players to start the game.
+  }
+} 
+
+on *:TEXT:*:?:{
+  IF (%rps.1 == $null) || (%rps.2 == $null) {
+    MSG [Rock Paper Scissors] $nick Stfu you're not playing } {
+    IF ($nick == %rps.1) {
+      IF ( $1 == rock ) { 
+        SET %rps.1t rock
+      }
+      ELSEIF ($1 == scissors) {
+        SET %rps.1t scissors 
+      }
+      ELSEIF ($1 == paper) {
+        SET %rps.1t paper 
+      }
+      ELSE {
+        msg $nick Invalid response
+      }
+    }
+    ELSEIF ($nick == %rps.2) {
+      IF ( $1 == rock ) { 
+        SET %rps.2t rock 
+      }
+      ELSEIF ($1 == scissors) {
+        SET %rps.2t scissors 
+      }
+      ELSEIF ($1 == paper) {
+        SET %rps.2t paper 
+      }
+      ELSE {
+        msg $nick Invalid response
+      }
+    }
+  }
+  ;All the following code will be executed either if $nick=%rps.1, if $nick=%rps.2 or $nick is not either of them
+  IF (%rps.2t != $null) && (%rps.1t != $null) {
+    MSG  %chan [Rock Paper Scissors] Both players have chosen. Results coming in 3 seconds.
+    /timerrps 0 3 /faceoff
+  }
+}
+
+on 5:TEXT:!override:#:{
+  if ($nick == mariomari007) {
+    UNSET %rps.1t
+    UNSET %chan
+    UNSET %rps.2t
+    UNSET %rps.1
+    UNSET %rps.2
+    MSG $chan RPS Reset.
+  }
+}
+
+ON 5:TEXT:!autohost*:#: {
+  IF ($nick == mariomari007 %mychan) {
+    IF ($2 == on) {
+      IF (%Autohost == On ) { MSG $nick Auto-host is already on! }
+      IF (!%AutoHost) {
+        UNSET %current.host
+        IF ($getcurrenthost == true) {
+          SET %ah.tier 1
+          SET %ah.uptime $ctime
+        }
+        SET %AutoHost On
+        timer.[AUTOHOST] 0 300 autohost
+        MSG $nick Auto-Host is now on!
+        IF (!%current.host) { autohost }
+      }
+    }
+    IF ($2 == off) {
+      IF (!%AutoHost) { MSG $nick Auto-host was not on! }
+      IF (%Autohost == On ) {
+        MSG $nick Auto-Host is now disabled!
+        timer.[AUTOHOST] off
+        UNSET %AutoHost
+      }
+    }
+  }
+}
+
+ON 5:TEXT:!nexthost:#: {
+  IF ($nick == mariomari007 %mychan) {
+    IF (%Autohost == On) {
+      IF (!%ah.run) {
+        timer.[AUTOHOST] off
+        UNSET %current.host
+        MSG %mychan .unhost
+        MSG $nick The current host has been skipped!  Now searching for another host!
+        timer.[AUTOHOST] 0 300 autohost
+      }
+      ELSEIF (%ah.run) {
+        MSG $nick Auto-Host is currently running!  Please try again in a few seconds!
+      }
+    }
+    IF (%Autohost == Off) {
+      MSG $nick Auto-Host is not on!
+    }
+  }
+}
+
+ON 5:TEXT:!settier*:#: {
+  IF ($nick == mariomari007 %mychan) && ($2 isnum 1-3) {
+    IF (!%ah.run) {
+      SET %ah.tier $2
+      MSG $nick The current host has been temporarily set as a Tier $2 host!
+    }
+    ELSEIF (%ah.run) {
+      MSG $nick Auto-Host is currently running!  Please try again in a few seconds!
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+on *:text:!*:#: {
+  var %command = $1
+  var %i = 1
+  while (%i <= %commandID) {
+    if ($readini(%commandFile, %i, name) == %command) {
+      var %msg = $readini(%commandFile, %i, message)
+      %msg = $checkMsgAt(%msg)
+      writeini -n %tempComFile command message %msg
+      var %newMsg = $readini(%tempComFile, command, message)
+      msg $chan %newMsg
+      return
+    }
+    inc %i
+  }
+  msg $chan /me The command %command was not found.
+}
