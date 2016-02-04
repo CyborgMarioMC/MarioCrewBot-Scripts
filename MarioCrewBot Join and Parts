@@ -1,0 +1,68 @@
+//-------------------------------------------------------------------------
+// Join and Part
+//-------------------------------------------------------------------------
+
+on 5:JOIN:#: {
+  if ($nick == Mariomari007) {
+    msg $chan /me Detected MarioCrew leader $nick online
+  }
+}
+
+on 5:PART:#: {
+  if ($nick == Mariomari007) {
+    msg $chan /me Detected $nick offline
+  }
+}
+
+on *:JOIN:#: {
+  alias that adds 1 view
+}
+
+on *:JOIN:#: {
+  $+(timer, $nick) 0 900 addTimerCoins $nick
+}
+
+on *:PART:#: {
+  $+(timer, $nick) off
+}
+
+on *:JOIN:#: {
+  if ($nick == mariomari007) {
+    timerSwitchBankheist 0 1800 switchCoinraidOn $chan %coinraidIsOn
+  }
+}
+
+ON *:LOAD: {
+  SET %mychan #mariomari007
+  SET %t2.wait 3600
+  SET %t3.wait 1800
+  SET %rh.wait 28800
+  SET %twitch_id fllwxxzlw7elunergkcotsh31nuuowt
+}
+
+ON *:UNLOAD: {
+  UNSET %mychan
+  UNSET %t2.wait
+  UNSET %t3.wait
+  UNSET %rh.wait
+  UNSET %twitch_id
+}
+
+ON *:EXIT: {
+  UNSET %Autohost
+}
+
+on *:JOIN:#: {
+  if ($nick == mariomari007) {
+    timerUptime off
+    %uptime = 0
+    timerUptime 0 1 inc %uptime
+  }
+}
+
+on *:PART:#: {
+  if ($nick == mariomari007) {
+    timerUptime off
+    %uptime = 0
+  }
+}
